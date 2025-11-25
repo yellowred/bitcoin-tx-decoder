@@ -5,6 +5,8 @@ Learn about a Bitcoin transaction in your terminal.
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![Bitcoin](https://img.shields.io/badge/Bitcoin-000?style=for-the-badge&logo=bitcoin&logoColor=white)
 
+<img width="1471" height="1058" alt="Image" src="https://github.com/user-attachments/assets/86efad8e-5e99-4835-9a01-fa8ba1ed7041" />
+
 ## Features
 
 - **Visual transaction breakdown** showing inputs, outputs, and fees
