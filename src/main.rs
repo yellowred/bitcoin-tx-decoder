@@ -1,6 +1,6 @@
-mod lib;
+// Copyright (c) 2025 Oleg Kubrakov
 
-use bitcoin::Transaction;
+use bitcoin::{consensus::encode, Transaction};
 use clap::Parser;
 use colored::*;
 use prettytable::{format, Cell, Row, Table};
@@ -47,12 +47,19 @@ fn main() {
     };
 
     // Decode transaction
-    let tx = lib::decode_transaction(&tx_hex).unwrap_or_else(|e| {
+    let tx = decode_transaction(&tx_hex).unwrap_or_else(|e| {
         eprintln!("{} {}", "✗".red().bold(), e);
         std::process::exit(1);
     });
 
     display_transaction(&tx);
+}
+
+/// Decode a hex-encoded Bitcoin transaction
+pub fn decode_transaction(hex: &str) -> Result<Transaction, String> {
+    let tx_bytes = hex::decode(hex.trim()).map_err(|e| format!("Invalid hex string: {}", e))?;
+
+    encode::deserialize(&tx_bytes).map_err(|e| format!("Failed to decode transaction: {}", e))
 }
 
 fn decode_witness_item(witness: &[u8]) -> String {

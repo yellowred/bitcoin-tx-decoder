@@ -9,7 +9,7 @@ Learn about a Bitcoin transaction in your terminal.
 
 ## Features
 
-- **Visual transaction breakdown** showing inputs, outputs, and fees
+- **Visual transaction breakdown** showing metadata, inputs, outputs,
 - **Input type detection** - identifies P2WPKH, P2WSH, P2TR (key path & script path), and legacy inputs
 - **Ephemeral Anchor detection** - identifies P2A outputs for CPFP fee bumping
 - **TimeLock** extraction
