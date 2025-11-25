@@ -28,13 +28,13 @@ cargo install --path .
 ### Decode from hex string
 
 ```bash
-btc-tx-decoder --tx <HEX_TRANSACTION>
+bitcoin-tx-decoder --tx <HEX_TRANSACTION>
 ```
 
 ### Decode from file
 
 ```bash
-btc-tx-decoder --file transaction.txt
+bitcoin-tx-decoder --file transaction.txt
 ```
 
 ## Contributing
