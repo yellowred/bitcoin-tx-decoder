@@ -110,6 +110,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b47c4ab7a93edb0c7198c5535ed9b52b63095f4e9b45279c6736cec4b856baf"
 
 [[package]]
+name = "bitcoin-tx-decoder"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "clap",
+ "colored",
+ "hex",
+ "prettytable-rs",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bitcoin-units"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -143,19 +156,6 @@ name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
-
-[[package]]
-name = "btc-tx-decoder"
-version = "0.1.0"
-dependencies = [
- "bitcoin",
- "clap",
- "colored",
- "hex",
- "prettytable-rs",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "cc"

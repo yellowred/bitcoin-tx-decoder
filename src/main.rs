@@ -1,9 +1,9 @@
 // Copyright (c) 2025 Oleg Kubrakov
 
-use bitcoin::{consensus::encode, Transaction};
+use bitcoin::{Transaction, consensus::encode};
 use clap::Parser;
 use colored::*;
-use prettytable::{format, Cell, Row, Table};
+use prettytable::{Cell, Row, Table, format};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -166,6 +166,21 @@ fn detect_input_type(input: &bitcoin::TxIn) -> String {
     "Unknown".to_string()
 }
 
+/// Get the address type as a human-readable string
+fn get_address_type(address: &bitcoin::Address) -> &'static str {
+    use bitcoin::address::AddressType;
+
+    match address.address_type() {
+        Some(AddressType::P2pkh) => "P2PKH",
+        Some(AddressType::P2sh) => "P2SH",
+        Some(AddressType::P2wpkh) => "P2WPKH",
+        Some(AddressType::P2wsh) => "P2WSH",
+        Some(AddressType::P2tr) => "P2TR",
+        Some(AddressType::P2a) => "P2A",
+        _ => "Unknown",
+    }
+}
+
 fn display_transaction(tx: &Transaction) {
     // Transaction Overview
     println!(
@@ -314,6 +329,26 @@ fn display_transaction(tx: &Transaction) {
             ))
             .style_spec("Fy"),
         ]));
+
+        // Try to extract address from script
+        if let Ok(address) =
+            bitcoin::Address::from_script(&output.script_pubkey, bitcoin::Network::Bitcoin)
+        {
+            let addr_type = get_address_type(&address);
+            output_table.add_row(Row::new(vec![
+                Cell::new("  Address").style_spec("Fb"),
+                Cell::new(&format!("{} ({})", address, addr_type)).style_spec("Fc"),
+            ]));
+        } else if let Ok(address) =
+            bitcoin::Address::from_script(&output.script_pubkey, bitcoin::Network::Testnet)
+        {
+            let addr_type = get_address_type(&address);
+            output_table.add_row(Row::new(vec![
+                Cell::new("  Address (Testnet)").style_spec("Fb"),
+                Cell::new(&format!("{} ({})", address, addr_type)).style_spec("Fc"),
+            ]));
+        }
+
         // Check if this is an ephemeral anchor (P2A)
         if is_ephemeral_anchor(output) {
             output_table.add_row(Row::new(vec![
