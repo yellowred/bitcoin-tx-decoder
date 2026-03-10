@@ -62,6 +62,52 @@ pub fn decode_transaction(hex: &str) -> Result<Transaction, String> {
     encode::deserialize(&tx_bytes).map_err(|e| format!("Failed to decode transaction: {}", e))
 }
 
+/// Calculate the byte length of a Bitcoin compact size (varint) encoding
+fn compact_size_len(n: usize) -> usize {
+    if n <= 0xfc {
+        1
+    } else if n <= 0xffff {
+        3
+    } else if n <= 0xffff_ffff {
+        5
+    } else {
+        9
+    }
+}
+
+/// Calculate the virtual size of a single input (including its witness data)
+fn input_vsize(input: &bitcoin::TxIn) -> usize {
+    // Non-witness (base) data:
+    // previous_output: txid (32) + vout (4) = 36
+    // script_sig: compact_size(len) + script bytes
+    // sequence: 4
+    let script_sig_len = input.script_sig.len();
+    let base_size = 36 + compact_size_len(script_sig_len) + script_sig_len + 4;
+
+    // Witness data (scaled at 1/4 weight)
+    let witness_size = if !input.witness.is_empty() {
+        let mut size = compact_size_len(input.witness.len()); // number of witness items
+        for item in input.witness.iter() {
+            size += compact_size_len(item.len()) + item.len();
+        }
+        size
+    } else {
+        0
+    };
+
+    let weight = base_size * 4 + witness_size;
+    (weight + 3) / 4 // ceil(weight / 4)
+}
+
+/// Calculate the virtual size of a single output
+fn output_vsize(output: &bitcoin::TxOut) -> usize {
+    // Outputs are entirely non-witness data:
+    // value: 8 bytes
+    // script_pubkey: compact_size(len) + script bytes
+    let script_len = output.script_pubkey.len();
+    8 + compact_size_len(script_len) + script_len
+}
+
 fn decode_witness_item(witness: &[u8]) -> String {
     let len = witness.len();
 
@@ -274,6 +320,11 @@ fn display_transaction(tx: &Transaction) {
             ]));
         }
 
+        input_table.add_row(Row::new(vec![
+            Cell::new("  Virtual Size").style_spec("Fb"),
+            Cell::new(&format!("{} vBytes", input_vsize(input))).style_spec("Fw"),
+        ]));
+
         // Witness data if present
         if !input.witness.is_empty() {
             input_table.add_row(Row::new(vec![
@@ -376,6 +427,10 @@ fn display_transaction(tx: &Transaction) {
             Cell::new("  Script Hex").style_spec("Fb"),
             Cell::new(&hex::encode(output.script_pubkey.as_bytes())).style_spec("Fg"),
         ]));
+        output_table.add_row(Row::new(vec![
+            Cell::new("  Virtual Size").style_spec("Fb"),
+            Cell::new(&format!("{} vBytes", output_vsize(output))).style_spec("Fw"),
+        ]));
 
         output_table.printstd();
     }
@@ -405,4 +460,83 @@ fn display_transaction(tx: &Transaction) {
 
     println!("\n{}", "═".repeat(70).cyan().bold());
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // P2WPKH segwit transaction with 1 input and 3 outputs
+    const SEGWIT_TX_HEX: &str = "020000000001010eeb61beeddeaab8a7bb024efcac1fa3faecb7c96c4127782e6bc7cd59fc51490200000000fffffffd03afd701000000000017a914715a091837e1340c8f4d11c20a16a4c92cee9af187ce22000000000000225120a76dcc4ffe5f6120fb0e78332d02272de196d2bc75fbb2f31908ea68fc88208aef780800000000001600148db324a5c4bf820717091087769dee302809ccb202483045022100fea069372ab582b1edfa863c3affdf691064bd892a14173a1f3bc7285497f3140220283339f2abbd165bbc6b4b305db28b9a064f051c2b097f318c2fa507bf320bc3012103cc976f202ab9e2d0bbe3ed8e728aadd6042294f223ff665516c114733647b6ba00000000";
+
+    // Coinbase segwit transaction with 1 input and 2 outputs
+    const COINBASE_TX_HEX: &str = "020000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0502e8030101ffffffff0200f2052a0100000016001496d5599e55dfb1d6a2adc94e4f7e3b0f6b3b6b100000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf90120000000000000000000000000000000000000000000000000000000000000000000000000";
+
+    #[test]
+    fn test_compact_size_len() {
+        assert_eq!(compact_size_len(0), 1);
+        assert_eq!(compact_size_len(1), 1);
+        assert_eq!(compact_size_len(252), 1);
+        assert_eq!(compact_size_len(253), 3);
+        assert_eq!(compact_size_len(0xffff), 3);
+        assert_eq!(compact_size_len(0x10000), 5);
+        assert_eq!(compact_size_len(0xffff_ffff), 5);
+        assert_eq!(compact_size_len(0x1_0000_0000), 9);
+    }
+
+    #[test]
+    fn test_input_vsize_segwit() {
+        let tx = decode_transaction(SEGWIT_TX_HEX).unwrap();
+        // P2WPKH input: 41 bytes base (36 + 1 + 0 + 4), witness ~107 bytes
+        // Weight = 41*4 + 107 = 271, vsize = ceil(271/4) = 68
+        assert_eq!(input_vsize(&tx.input[0]), 68);
+    }
+
+    #[test]
+    fn test_input_vsize_coinbase() {
+        let tx = decode_transaction(COINBASE_TX_HEX).unwrap();
+        // Coinbase input: base = 36 + 1 + 5 + 4 = 46, witness = 1 + 1 + 32 = 34
+        // Weight = 46*4 + 34 = 218, vsize = ceil(218/4) = 55
+        assert_eq!(input_vsize(&tx.input[0]), 55);
+    }
+
+    #[test]
+    fn test_output_vsize_p2sh() {
+        let tx = decode_transaction(SEGWIT_TX_HEX).unwrap();
+        // P2SH output: 8 + 1 + 23 = 32
+        assert_eq!(output_vsize(&tx.output[0]), 32);
+    }
+
+    #[test]
+    fn test_output_vsize_p2tr() {
+        let tx = decode_transaction(SEGWIT_TX_HEX).unwrap();
+        // P2TR output: 8 + 1 + 34 = 43
+        assert_eq!(output_vsize(&tx.output[1]), 43);
+    }
+
+    #[test]
+    fn test_output_vsize_p2wpkh() {
+        let tx = decode_transaction(SEGWIT_TX_HEX).unwrap();
+        // P2WPKH output: 8 + 1 + 22 = 31
+        assert_eq!(output_vsize(&tx.output[2]), 31);
+    }
+
+    #[test]
+    fn test_vsize_sum_plus_overhead_equals_tx_vsize() {
+        let tx = decode_transaction(SEGWIT_TX_HEX).unwrap();
+
+        let inputs_vsize: usize = tx.input.iter().map(|i| input_vsize(i)).sum();
+        let outputs_vsize: usize = tx.output.iter().map(|o| output_vsize(o)).sum();
+
+        // Transaction overhead:
+        // base: version(4) + input_count(1) + output_count(1) + locktime(4) = 10
+        // witness: marker(1) + flag(1) = 2
+        // overhead weight = 10*4 + 2 = 42, overhead vsize = ceil(42/4) = 11
+        let overhead_base = 4 + compact_size_len(tx.input.len()) + compact_size_len(tx.output.len()) + 4;
+        let overhead_witness = 2; // segwit marker + flag
+        let overhead_weight = overhead_base * 4 + overhead_witness;
+        let overhead_vsize = (overhead_weight + 3) / 4;
+
+        assert_eq!(inputs_vsize + outputs_vsize + overhead_vsize, tx.vsize());
+    }
 }
